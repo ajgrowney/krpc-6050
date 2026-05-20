@@ -1,0 +1,17 @@
+edition = "2023";
+
+message ConnectionRequest {
+  Type type = 1;
+  string client_name = 2;
+  bytes client_identifier = 3;
+  enum Type {
+    RPC = 0;
+    STREAM = 1;
+  };
+}
+
+message TelemetryPayload {
+    int32 status = 1;
+    int32 value = 2;
+}
+
