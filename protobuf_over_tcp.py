@@ -48,7 +48,11 @@ def handle_client(conn, addr):
     if req.type == messages_pb2.ConnectionRequest.STREAM:
         while True:
             tel = recv_message(conn, messages_pb2.TelemetryPayload)
-            print(f"telemetry from {req.client_name}: status={tel.status} value={tel.value}")
+            print(
+                f"telemetry from {req.client_name}: "
+                f"status={tel.status} roll={tel.roll} pitch={tel.pitch} "
+                f"yaw={tel.yaw} encoder={tel.encoder_count}"
+            )
     else:
         print("Client connected")
 
@@ -78,7 +82,7 @@ def server(port):
 
 def client(server_port):
     """Send a connection request
-    - Bird (Will send telemetry payloads)
+    - Flight Controller (Will send telemetry payloads)
     - Mission Control (Will render UI / alert)
     """
     with socket.create_connection(("127.0.0.1", server_port)) as sock:
@@ -90,10 +94,17 @@ def client(server_port):
 
         for value in range(5):
             telemetry = messages_pb2.TelemetryPayload()
-            telemetry.status = 1
-            telemetry.value = value
+            telemetry.status = 3
+            telemetry.roll = value * 1.0
+            telemetry.pitch = value * 2.0
+            telemetry.yaw = value * 3.0
+            telemetry.encoder_count = value
             send_message(sock, telemetry)
-            print(f"sent telemetry value={value}")
+            print(
+                f"sent telemetry status={telemetry.status} roll={telemetry.roll} "
+                f"pitch={telemetry.pitch} yaw={telemetry.yaw} "
+                f"encoder={telemetry.encoder_count}"
+            )
             time.sleep(1)
         print("client disconnecting")
 

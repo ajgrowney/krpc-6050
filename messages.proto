@@ -11,7 +11,10 @@ message ConnectionRequest {
 }
 
 message TelemetryPayload {
-    int32 status = 1;
-    int32 value = 2;
+  int32 status = 1;
+  float roll = 2;
+  float pitch = 3;
+  float yaw = 4;
+  int32 encoder_count = 5;
 }
 
