@@ -18,3 +18,14 @@ message TelemetryPayload {
   int32 encoder_count = 5;
 }
 
+message RealTelemetryPayload {
+  uint32 packet_version = 1;   // v1 uses value 1
+  uint32 sequence = 2;         // low 16 bits used on wire
+  uint32 status_mask = 3;      // bit assignments defined in the protocol doc
+
+  sfixed32 yaw_cdeg = 4;       // centidegrees, e.g. 25.34 deg -> 2534
+  sfixed32 pitch_cdeg = 5;     // centidegrees
+  sfixed32 roll_cdeg = 6;      // centidegrees
+
+  sfixed32 encoder_ticks = 7;  // signed count from wire
+}
