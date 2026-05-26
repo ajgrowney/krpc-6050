@@ -7,10 +7,19 @@
 unsigned long lastPrintMs = 0;
 unsigned long lastUpdateUs = 0;
 unsigned long lastImuProbeMs = 0;
+uint16_t packetSequence = 0;
 bool imuConnected = false;
 constexpr uint8_t kRotaryBit = 0x01;
 constexpr uint8_t kImuBit = 0x02;
 int status = 0;
+
+// Checkout docs/packet_dd.md for info on telemetry
+constexpr uint8_t kSync0 = 0xAA;
+constexpr uint8_t kSync1 = 0x55;
+constexpr uint8_t kPacketVersion = 0x01;
+constexpr size_t kPayloadSize = 14;
+constexpr size_t kPacketSize = 17;
+constexpr bool kEnableSerialTextDebug = false;
 
 constexpr uint8_t kEncoderClkPin = 2;
 constexpr uint8_t kEncoderDtPin = 3;
@@ -38,7 +47,9 @@ void calibrateGyroBias() {
   long sumZ = 0;
   int16_t ax, ay, az, gx, gy, gz;
 
-  Serial.println("Hold IMU still for gyro calibration...");
+  if (kEnableSerialTextDebug) {
+    Serial.println("Hold IMU still for gyro calibration...");
+  }
 
   for (int index = 0; index < sampleCount; ++index) {
     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
@@ -67,20 +78,28 @@ void setup() {
   Wire.setWireTimeout(3000, true);
 
   delay(1000);
-  Serial.println("Starting MPU6050...");
+  if (kEnableSerialTextDebug) {
+    Serial.println("Starting MPU6050...");
+  }
 
   // 
   mpu.initialize();
   if (mpu.testConnection()) {
     calibrateGyroBias();
     status += 2;
-    Serial.println("MPU6050 connected.");
+    if (kEnableSerialTextDebug) {
+      Serial.println("MPU6050 connected.");
+    }
   } else {
-    Serial.println("MPU6050 connection failed.");
+    if (kEnableSerialTextDebug) {
+      Serial.println("MPU6050 connection failed.");
+    }
   }
 
   lastUpdateUs = micros();
-  Serial.println("status,roll,pitch,yaw");
+  if (kEnableSerialTextDebug) {
+    Serial.println("status,roll,pitch,yaw");
+  }
 }
 
 void updateEncoder() {
@@ -98,6 +117,91 @@ void updateEncoder() {
     }
     lastClkState = clkState;
   }
+}
+
+int16_t degreesToCentidegrees(float degrees) {
+  float scaled = roundf(degrees * 100.0f);
+
+  if (scaled > 32767.0f) {
+    return 32767;
+  }
+  if (scaled < -32768.0f) {
+    return -32768;
+  }
+
+  return static_cast<int16_t>(scaled);
+}
+
+void writeInt16LE(uint8_t* dest, int16_t value) {
+  dest[0] = static_cast<uint8_t>(value & 0xFF);
+  dest[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+}
+
+void writeUint16LE(uint8_t* dest, uint16_t value) {
+  dest[0] = static_cast<uint8_t>(value & 0xFF);
+  dest[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+}
+
+void writeInt32LE(uint8_t* dest, int32_t value) {
+  dest[0] = static_cast<uint8_t>(value & 0xFF);
+  dest[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+  dest[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+  dest[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+}
+
+uint8_t crc8Maxim(const uint8_t* data, size_t length) {
+  uint8_t crc = 0x00;
+
+  for (size_t index = 0; index < length; ++index) {
+    uint8_t inByte = data[index];
+
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      uint8_t mix = (crc ^ inByte) & 0x01;
+      crc >>= 1;
+      if (mix != 0) {
+        crc ^= 0x8C;
+      }
+      inByte >>= 1;
+    }
+  }
+
+  return crc;
+}
+
+/*
+Print out human readabale csv debugging
+*/
+void serial_csv(int statusMask, float rollDegrees, float pitchDegrees, float yawDegrees, long encoderTicks) {
+  Serial.print(statusMask);
+  Serial.print(",");
+  Serial.print(rollDegrees);
+  Serial.print(",");
+  Serial.print(pitchDegrees);
+  Serial.print(",");
+  Serial.print(yawDegrees);
+  Serial.print(",");
+  Serial.println(encoderTicks);
+}
+
+/*
+Serial Binary for KSP
+*/
+void serial_binary(uint8_t statusMask, float rollDegrees, float pitchDegrees, float yawDegrees, int32_t encoderTicks) {
+  uint8_t packet[kPacketSize];
+
+  packet[0] = kSync0;
+  packet[1] = kSync1;
+  packet[2] = kPacketVersion;
+  writeUint16LE(&packet[3], packetSequence);
+  packet[5] = statusMask;
+  writeInt16LE(&packet[6], degreesToCentidegrees(yawDegrees));
+  writeInt16LE(&packet[8], degreesToCentidegrees(pitchDegrees));
+  writeInt16LE(&packet[10], degreesToCentidegrees(rollDegrees));
+  writeInt32LE(&packet[12], encoderTicks);
+  packet[16] = crc8Maxim(&packet[2], kPayloadSize);
+
+  Serial.write(packet, kPacketSize);
+  packetSequence++;
 }
 
 void updateEncoderButton() {
@@ -126,7 +230,7 @@ void loop() {
   lastUpdateUs = nowUs;
 
   // ---- Handle Rotary Enc Data ----
-  if (status != kRotaryBit) {
+  if (status & kRotaryBit) {
     updateEncoder();
     updateEncoderButton();
   }
@@ -137,8 +241,9 @@ void loop() {
     imuConnected = mpu.testConnection();
 
     if (imuConnected) {
-      status |= kImuBit;
+      status = status | kImuBit; // Set the kImuBit
     } else {
+      // Clear the bit. Some 2's complement-ish. Don't wanna think about it too deep right now
       status &= ~kImuBit;
       rollDeg = 0.0f;
       pitchDeg = 0.0f;
@@ -164,16 +269,9 @@ void loop() {
   }
 
   // Check if it's time to send a payload
-  if (millis() - lastPrintMs >= 50) {
+  // Look at docs/packet_dd_add.md for framed payload info.
+  if (millis() - lastPrintMs >= 25) {
     lastPrintMs = millis();
-    Serial.print(status);
-    Serial.print(",");
-    Serial.print(rollDeg);
-    Serial.print(",");
-    Serial.print(pitchDeg);
-    Serial.print(",");
-    Serial.print(yawDeg);
-    Serial.print(",");
-    Serial.println(encoderCount);
+    serial_binary(static_cast<uint8_t>(status), rollDeg, pitchDeg, yawDeg, static_cast<int32_t>(encoderCount));
   }
 }

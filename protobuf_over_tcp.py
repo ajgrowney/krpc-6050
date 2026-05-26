@@ -1,12 +1,12 @@
-"""Simple server/client with protobuf over tcp 
-to show the kRPC design
-Pre-requisites: compile the messages.proto into messages_pb2
+"""Simple server/client with protobuf over tcp.
 
+Pre-requisites: compile messages.proto into messages_pb2.
 """
 import time
 import socket
-import messages_pb2 # ConnectionRequest, TelemetryPayload
 import struct
+
+import messages_pb2  # ConnectionRequest, RealTelemetryPayload
 
 connections = {}
 
@@ -47,11 +47,13 @@ def handle_client(conn, addr):
     print(f"{req.client_name} connected from {addr}, type={req.type}")
     if req.type == messages_pb2.ConnectionRequest.STREAM:
         while True:
-            tel = recv_message(conn, messages_pb2.TelemetryPayload)
+            tel = recv_message(conn, messages_pb2.RealTelemetryPayload)
             print(
                 f"telemetry from {req.client_name}: "
-                f"status={tel.status} roll={tel.roll} pitch={tel.pitch} "
-                f"yaw={tel.yaw} encoder={tel.encoder_count}"
+                f"version={tel.packet_version} seq={tel.sequence} "
+                f"status=0x{tel.status_mask:02X} yaw_cdeg={tel.yaw_cdeg} "
+                f"pitch_cdeg={tel.pitch_cdeg} roll_cdeg={tel.roll_cdeg} "
+                f"encoder_ticks={tel.encoder_ticks}"
             )
     else:
         print("Client connected")
@@ -93,17 +95,20 @@ def client(server_port):
         send_message(sock, request)
 
         for value in range(5):
-            telemetry = messages_pb2.TelemetryPayload()
-            telemetry.status = 3
-            telemetry.roll = value * 1.0
-            telemetry.pitch = value * 2.0
-            telemetry.yaw = value * 3.0
-            telemetry.encoder_count = value
+            telemetry = messages_pb2.RealTelemetryPayload()
+            telemetry.packet_version = 1
+            telemetry.sequence = value
+            telemetry.status_mask = 0x03
+            telemetry.yaw_cdeg = value * 300
+            telemetry.pitch_cdeg = value * 200
+            telemetry.roll_cdeg = value * 100
+            telemetry.encoder_ticks = value
             send_message(sock, telemetry)
             print(
-                f"sent telemetry status={telemetry.status} roll={telemetry.roll} "
-                f"pitch={telemetry.pitch} yaw={telemetry.yaw} "
-                f"encoder={telemetry.encoder_count}"
+                f"sent telemetry version={telemetry.packet_version} "
+                f"seq={telemetry.sequence} status=0x{telemetry.status_mask:02X} "
+                f"yaw_cdeg={telemetry.yaw_cdeg} pitch_cdeg={telemetry.pitch_cdeg} "
+                f"roll_cdeg={telemetry.roll_cdeg} encoder_ticks={telemetry.encoder_ticks}"
             )
             time.sleep(1)
         print("client disconnecting")
