@@ -35,6 +35,11 @@ int16_t ax, ay, az, gx, gy, gz;
 float rollDeg = 0.0f;
 float pitchDeg = 0.0f;
 float yawDeg = 0.0f;
+float accelRollDeg = 0.0f;
+float accelPitchDeg = 0.0f;
+float gyroXDegPerSec = 0.0f;
+float gyroYDegPerSec = 0.0f;
+float gyroZDegPerSec = 0.0f;
 
 float gyroXBias = 0.0f;
 float gyroYBias = 0.0f;
@@ -62,6 +67,15 @@ void calibrateGyroBias() {
   gyroXBias = static_cast<float>(sumX) / sampleCount;
   gyroYBias = static_cast<float>(sumY) / sampleCount;
   gyroZBias = static_cast<float>(sumZ) / sampleCount;
+
+  if (kEnableSerialTextDebug) {
+    Serial.print("gyro_bias,");
+    Serial.print(gyroXBias);
+    Serial.print(",");
+    Serial.print(gyroYBias);
+    Serial.print(",");
+    Serial.println(gyroZBias);
+  }
 }
 
 void setup() {
@@ -98,7 +112,7 @@ void setup() {
 
   lastUpdateUs = micros();
   if (kEnableSerialTextDebug) {
-    Serial.println("status,roll,pitch,yaw");
+    Serial.println("status,roll,pitch,yaw,encoder,gx,gy,gz,gyro_x_dps,gyro_y_dps,gyro_z_dps,accel_roll,accel_pitch");
   }
 }
 
@@ -183,6 +197,48 @@ void serial_csv(int statusMask, float rollDegrees, float pitchDegrees, float yaw
   Serial.println(encoderTicks);
 }
 
+void serial_imu_debug_csv(
+  int statusMask,
+  float rollDegrees,
+  float pitchDegrees,
+  float yawDegrees,
+  long encoderTicks,
+  int16_t gyroXRaw,
+  int16_t gyroYRaw,
+  int16_t gyroZRaw,
+  float gyroXDegreesPerSecond,
+  float gyroYDegreesPerSecond,
+  float gyroZDegreesPerSecond,
+  float accelRollDegrees,
+  float accelPitchDegrees
+) {
+  Serial.print(statusMask);
+  Serial.print(",");
+  Serial.print(rollDegrees);
+  Serial.print(",");
+  Serial.print(pitchDegrees);
+  Serial.print(",");
+  Serial.print(yawDegrees);
+  Serial.print(",");
+  Serial.print(encoderTicks);
+  Serial.print(",");
+  Serial.print(gyroXRaw);
+  Serial.print(",");
+  Serial.print(gyroYRaw);
+  Serial.print(",");
+  Serial.print(gyroZRaw);
+  Serial.print(",");
+  Serial.print(gyroXDegreesPerSecond);
+  Serial.print(",");
+  Serial.print(gyroYDegreesPerSecond);
+  Serial.print(",");
+  Serial.print(gyroZDegreesPerSecond);
+  Serial.print(",");
+  Serial.print(accelRollDegrees);
+  Serial.print(",");
+  Serial.println(accelPitchDegrees);
+}
+
 /*
 Serial Binary for KSP
 */
@@ -253,12 +309,12 @@ void loop() {
   if (imuConnected) {
     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-    float gyroXDegPerSec = (gx - gyroXBias) / 131.0f;
-    float gyroYDegPerSec = (gy - gyroYBias) / 131.0f;
-    float gyroZDegPerSec = (gz - gyroZBias) / 131.0f;
+    gyroXDegPerSec = (gx - gyroXBias) / 131.0f;
+    gyroYDegPerSec = (gy - gyroYBias) / 131.0f;
+    gyroZDegPerSec = (gz - gyroZBias) / 131.0f;
 
-    float accelRollDeg = atan2(static_cast<float>(ay), static_cast<float>(az)) * 180.0f / PI;
-    float accelPitchDeg = atan2(
+    accelRollDeg = atan2(static_cast<float>(ay), static_cast<float>(az)) * 180.0f / PI;
+    accelPitchDeg = atan2(
       -static_cast<float>(ax),
       sqrt(static_cast<float>(ay) * ay + static_cast<float>(az) * az)
     ) * 180.0f / PI;
@@ -272,6 +328,24 @@ void loop() {
   // Look at docs/packet_dd_add.md for framed payload info.
   if (millis() - lastPrintMs >= 25) {
     lastPrintMs = millis();
-    serial_binary(static_cast<uint8_t>(status), rollDeg, pitchDeg, yawDeg, static_cast<int32_t>(encoderCount));
+    if (kEnableSerialTextDebug) {
+      serial_imu_debug_csv(
+        status,
+        rollDeg,
+        pitchDeg,
+        yawDeg,
+        encoderCount,
+        gx,
+        gy,
+        gz,
+        gyroXDegPerSec,
+        gyroYDegPerSec,
+        gyroZDegPerSec,
+        accelRollDeg,
+        accelPitchDeg
+      );
+    } else {
+      serial_binary(static_cast<uint8_t>(status), rollDeg, pitchDeg, yawDeg, static_cast<int32_t>(encoderCount));
+    }
   }
 }

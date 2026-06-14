@@ -6,6 +6,12 @@ Raspberry Pi: read IMU data and actuator state from the Arduino, translate that 
 
 Simulator Target: KSP + kRPC on your PC
 
+## Design Docs
+
+- [Mission Control V1](docs/mission_control_v1_dd.md): current host-side bridge design with direct telemetry-to-control mapping.
+- [Mission Control V2](docs/mission_control_v2_dd.md): planned calibration-first startup flow with host-side axis mapping before kRPC output is enabled.
+- [Mission Control V2 Refactor Plan](docs/mission_control_v2_refactor_plan.md): concrete phase-by-phase implementation plan for refactoring `mission_control.py` toward the V2 architecture.
+
 
 ## Hardware Specs
 
